@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  /* Forest Mist Color Palette */
+  --color-medical-dark: #2F3E46;       /* The darkest shade */
+  --color-medical-panel: #354F52;      /* Secondary dark shade for cards/panels */
+  --color-medical-accent-dark: #52796F;/* Medium accent */
+  --color-medical-accent: #84A98C;     /* Main accent */
+  --color-medical-accent-light: #CAD2C5; /* Lightest tint for highlights / text */
+
+  /* Triage Colors (Keep standard red/yellow/green meaning but soften for aesthetics) */
+  --color-triage-red-bg: #4d2328;
+  --color-triage-red-text: #fca5a5;
+  --color-triage-red-border: #991b1b;
+  
+  --color-triage-yellow-bg: #4f3b18;
+  --color-triage-yellow-text: #fde047;
+  --color-triage-yellow-border: #a16207;
+
+  --color-triage-green-bg: #1e3a2b;    /* Blends with Forest Mist */
+  --color-triage-green-text: #84A98C;  /* Maps to Forest Mist accent */
+  --color-triage-green-border: #52796F;/* Maps to Forest Mist accent-dark */
+}
+
+body {
+  @apply bg-medical-dark text-medical-accent-light antialiased font-sans;
+}
+
+/* Custom Webkit scrollbar that matches the theme  */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-medical-dark; 
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-medical-accent-dark rounded-full hover:bg-medical-accent transition-colors;
+}
