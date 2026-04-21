@@ -10,6 +10,29 @@ Local development:
 http://localhost:8080
 ```
 
+## Persistence Mode
+
+Backend sekarang mendukung beberapa mode persistence:
+
+- `sqlite` (default, paling cepat untuk local/server biasa)
+- `firestore`
+- fallback `memory` bila driver gagal aktif
+
+Env yang relevan:
+
+```text
+PERSISTENCE_DRIVER=sqlite
+SQLITE_PATH=data/agha.db
+```
+
+Untuk Firestore:
+
+```text
+PERSISTENCE_DRIVER=firestore
+GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
 ## Ringkasan Endpoint
 
 ### Health dan metadata

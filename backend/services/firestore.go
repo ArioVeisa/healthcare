@@ -2,7 +2,10 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +16,7 @@ import (
 
 	storefire "cloud.google.com/go/firestore"
 	"github.com/google/uuid"
+	_ "modernc.org/sqlite"
 )
 
 var (
@@ -20,6 +24,9 @@ var (
 	patientDB = []models.Patient{}
 	sessions  = map[string]models.Session{}
 
+	sqliteDB           *sql.DB
+	sqliteEnabled      bool
+	sqlitePath         = "data/agha.db"
 	firestoreClient    *storefire.Client
 	firestoreEnabled   bool
 	patientsCollection = "patients"
@@ -30,6 +37,26 @@ const firestoreTimeout = 5 * time.Second
 
 // InitializePersistence menyiapkan koneksi Firestore jika env project tersedia.
 func InitializePersistence(cfg config.AppConfig) {
+	driver := strings.ToLower(strings.TrimSpace(cfg.PersistenceDriver))
+	if driver == "" {
+		driver = "sqlite"
+	}
+
+	if driver == "sqlite" {
+		if err := initializeSQLite(cfg.SQLitePath); err != nil {
+			log.Printf("persistence: gagal inisialisasi SQLite, fallback ke in-memory: %v", err)
+			return
+		}
+
+		log.Printf("persistence: SQLite aktif di %s", cfg.SQLitePath)
+		return
+	}
+
+	if driver != "firestore" {
+		log.Printf("persistence: driver %s tidak dikenali, fallback ke in-memory", driver)
+		return
+	}
+
 	if strings.TrimSpace(cfg.GoogleCloudProject) == "" {
 		log.Println("persistence: GOOGLE_CLOUD_PROJECT tidak diset, memakai in-memory store")
 		return
@@ -57,10 +84,19 @@ func InitializePersistence(cfg config.AppConfig) {
 // ClosePersistence menutup koneksi Firestore bila aktif.
 func ClosePersistence() error {
 	storeMu.Lock()
+	sqlDB := sqliteDB
+	sqliteDB = nil
+	sqliteEnabled = false
 	client := firestoreClient
 	firestoreClient = nil
 	firestoreEnabled = false
 	storeMu.Unlock()
+
+	if sqlDB != nil {
+		if err := sqlDB.Close(); err != nil {
+			return err
+		}
+	}
 
 	if client == nil {
 		return nil
@@ -167,6 +203,10 @@ func SavePatient(p models.Patient) {
 
 // GetAllPatients mengambil semua data (bisa digunakan buat inisialisasi awal UI React)
 func GetAllPatients() []models.Patient {
+	if result, ok := loadPatientsFromSQLite(); ok {
+		return result
+	}
+
 	if result, ok := loadPatientsFromFirestore(); ok {
 		return result
 	}
@@ -256,6 +296,10 @@ func stringsJoin(values []string, sep string) string {
 }
 
 func persistPatientAndSession(patient models.Patient, session models.Session) error {
+	if err := persistPatientAndSessionToSQLite(patient, session); err != nil {
+		return err
+	}
+
 	storeMu.RLock()
 	client := firestoreClient
 	enabled := firestoreEnabled
@@ -276,6 +320,156 @@ func persistPatientAndSession(patient models.Patient, session models.Session) er
 
 	_, err := client.Collection(sessionCollection).Doc(session.ID).Set(ctx, session)
 	return err
+}
+
+func persistPatientAndSessionToSQLite(patient models.Patient, session models.Session) error {
+	storeMu.RLock()
+	db := sqliteDB
+	enabled := sqliteEnabled
+	storeMu.RUnlock()
+
+	if !enabled || db == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), firestoreTimeout)
+	defer cancel()
+
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO patients (
+			id, session_id, name, phone, symptoms, triage, ai_reason, status,
+			source, has_audio, has_image, booking_status, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			session_id=excluded.session_id,
+			name=excluded.name,
+			phone=excluded.phone,
+			symptoms=excluded.symptoms,
+			triage=excluded.triage,
+			ai_reason=excluded.ai_reason,
+			status=excluded.status,
+			source=excluded.source,
+			has_audio=excluded.has_audio,
+			has_image=excluded.has_image,
+			booking_status=excluded.booking_status,
+			created_at=excluded.created_at,
+			updated_at=excluded.updated_at
+	`,
+		patient.ID,
+		patient.SessionID,
+		patient.Name,
+		patient.Phone,
+		patient.Symptoms,
+		patient.Triage,
+		patient.AIReason,
+		patient.Status,
+		patient.Source,
+		boolToInt(patient.HasAudio),
+		boolToInt(patient.HasImage),
+		patient.BookingStatus,
+		patient.CreatedAt.Format(time.RFC3339Nano),
+		patient.UpdatedAt.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO sessions (
+			id, patient_hash, masked_phone, masked_name, last_case_id, summary,
+			message_count, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			patient_hash=excluded.patient_hash,
+			masked_phone=excluded.masked_phone,
+			masked_name=excluded.masked_name,
+			last_case_id=excluded.last_case_id,
+			summary=excluded.summary,
+			message_count=excluded.message_count,
+			created_at=excluded.created_at,
+			updated_at=excluded.updated_at
+	`,
+		session.ID,
+		session.PatientHash,
+		session.MaskedPhone,
+		session.MaskedName,
+		session.LastCaseID,
+		session.Summary,
+		session.MessageCount,
+		session.CreatedAt.Format(time.RFC3339Nano),
+		session.UpdatedAt.Format(time.RFC3339Nano),
+	)
+
+	return err
+}
+
+func loadPatientsFromSQLite() ([]models.Patient, bool) {
+	storeMu.RLock()
+	db := sqliteDB
+	enabled := sqliteEnabled
+	storeMu.RUnlock()
+
+	if !enabled || db == nil {
+		return nil, false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), firestoreTimeout)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, session_id, name, phone, symptoms, triage, ai_reason, status,
+		       source, has_audio, has_image, booking_status, created_at, updated_at
+		FROM patients
+		ORDER BY datetime(created_at) DESC
+		LIMIT 200
+	`)
+	if err != nil {
+		log.Printf("persistence: gagal membaca dari SQLite, fallback ke in-memory: %v", err)
+		return nil, false
+	}
+	defer rows.Close()
+
+	result := make([]models.Patient, 0)
+	for rows.Next() {
+		var patient models.Patient
+		var createdAt string
+		var updatedAt string
+		var hasAudio int
+		var hasImage int
+
+		if err := rows.Scan(
+			&patient.ID,
+			&patient.SessionID,
+			&patient.Name,
+			&patient.Phone,
+			&patient.Symptoms,
+			&patient.Triage,
+			&patient.AIReason,
+			&patient.Status,
+			&patient.Source,
+			&hasAudio,
+			&hasImage,
+			&patient.BookingStatus,
+			&createdAt,
+			&updatedAt,
+		); err != nil {
+			log.Printf("persistence: gagal scan row SQLite: %v", err)
+			continue
+		}
+
+		patient.HasAudio = hasAudio == 1
+		patient.HasImage = hasImage == 1
+		patient.CreatedAt = parseTime(createdAt)
+		patient.UpdatedAt = parseTime(updatedAt)
+		result = append(result, patient)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("persistence: iterasi rows SQLite gagal: %v", err)
+		return nil, false
+	}
+
+	return result, true
 }
 
 func loadPatientsFromFirestore() ([]models.Patient, bool) {
@@ -321,9 +515,93 @@ func loadPatientsFromFirestore() ([]models.Patient, bool) {
 func persistenceMode() string {
 	storeMu.RLock()
 	defer storeMu.RUnlock()
+	if sqliteEnabled && sqliteDB != nil {
+		return "sqlite"
+	}
 	if firestoreEnabled && firestoreClient != nil {
 		return "firestore"
 	}
 
 	return "memory"
+}
+
+func initializeSQLite(path string) error {
+	trimmedPath := strings.TrimSpace(path)
+	if trimmedPath == "" {
+		trimmedPath = "data/agha.db"
+	}
+
+	if err := os.MkdirAll(filepath.Dir(trimmedPath), 0o755); err != nil {
+		return err
+	}
+
+	db, err := sql.Open("sqlite", trimmedPath)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS patients (
+			id TEXT PRIMARY KEY,
+			session_id TEXT,
+			name TEXT,
+			phone TEXT,
+			symptoms TEXT,
+			triage TEXT,
+			ai_reason TEXT,
+			status TEXT,
+			source TEXT,
+			has_audio INTEGER,
+			has_image INTEGER,
+			booking_status TEXT,
+			created_at TEXT,
+			updated_at TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			patient_hash TEXT,
+			masked_phone TEXT,
+			masked_name TEXT,
+			last_case_id TEXT,
+			summary TEXT,
+			message_count INTEGER,
+			created_at TEXT,
+			updated_at TEXT
+		)`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			db.Close()
+			return err
+		}
+	}
+
+	storeMu.Lock()
+	sqliteDB = db
+	sqliteEnabled = true
+	sqlitePath = trimmedPath
+	storeMu.Unlock()
+
+	return nil
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+
+	return 0
+}
+
+func parseTime(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err == nil {
+		return parsed
+	}
+
+	return time.Time{}
 }

@@ -13,6 +13,8 @@ type AppConfig struct {
 	WhatsAppVerifyToken string
 	WhatsAppAppSecret   string
 	AppName             string
+	PersistenceDriver   string
+	SQLitePath          string
 	GoogleCloudProject  string
 	PatientsCollection  string
 	SessionsCollection  string
@@ -32,6 +34,8 @@ func Load() AppConfig {
 			WhatsAppVerifyToken: getEnv("WHATSAPP_VERIFY_TOKEN", "agha-dev-verify-token"),
 			WhatsAppAppSecret:   getEnv("WHATSAPP_APP_SECRET", ""),
 			AppName:             getEnv("APP_NAME", "AGHA Triage Backend"),
+			PersistenceDriver:   getEnv("PERSISTENCE_DRIVER", "sqlite"),
+			SQLitePath:          getEnv("SQLITE_PATH", "data/agha.db"),
 			GoogleCloudProject:  getEnv("GOOGLE_CLOUD_PROJECT", ""),
 			PatientsCollection:  getEnv("FIRESTORE_PATIENTS_COLLECTION", "patients"),
 			SessionsCollection:  getEnv("FIRESTORE_SESSIONS_COLLECTION", "sessions"),

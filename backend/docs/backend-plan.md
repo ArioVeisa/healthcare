@@ -58,7 +58,7 @@ Prinsip backend yang harus dijaga selama implementasi:
 - message normalization
 - text triage
 - audio/image preparation
-- Firestore persistence
+- persistence nyata via SQLite atau Firestore
 - websocket bridge ke frontend
 - status case
 - basic audit logging

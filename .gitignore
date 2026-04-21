@@ -1,0 +1,4 @@
+backend/data/
+.tmp-ssh-askpass.sh
+.playwright-mcp/
+frontend/.vite/
