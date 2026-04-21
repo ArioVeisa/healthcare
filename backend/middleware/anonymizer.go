@@ -17,7 +17,8 @@ var (
 func AnonymizePII() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Hanya proses request JSON
-		if string(c.Request().Header.ContentType()) != "application/json" {
+		contentType := strings.ToLower(string(c.Request().Header.ContentType()))
+		if !strings.HasPrefix(contentType, fiber.MIMEApplicationJSON) {
 			return c.Next()
 		}
 

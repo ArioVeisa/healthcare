@@ -1,0 +1,7 @@
+{
+  "status": "ok",
+  "app_name": "AGHA Triage Backend",
+  "persistence_mode": "memory",
+  "supports_whatsapp": true,
+  "supports_websocket": true
+}

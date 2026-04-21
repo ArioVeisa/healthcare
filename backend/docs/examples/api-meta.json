@@ -1,0 +1,11 @@
+{
+  "total_patients": 12,
+  "red_count": 2,
+  "yellow_count": 6,
+  "green_count": 4,
+  "persistence_mode": "memory",
+  "supports_whatsapp": true,
+  "supports_websocket": true,
+  "supports_audio_intake": true,
+  "supports_image_intake": true
+}

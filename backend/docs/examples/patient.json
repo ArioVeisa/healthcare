@@ -1,0 +1,15 @@
+{
+  "id": "d1c7ba2d-eb08-47a0-a0a3-f5722e0717bb",
+  "session_id": "ecf3ea8ffcdfd9f866f427bbfd827a290b586afe",
+  "name": "D*** P******",
+  "phone": "0822********",
+  "symptoms": "Pasien mengirim voice note. Perlu transkripsi atau klarifikasi lanjutan dari operator medis.",
+  "triage": "KUNING",
+  "ai_reason": "Sistem menerima media tambahan yang mengindikasikan perlunya pemeriksaan manual atau klarifikasi lebih lanjut.",
+  "status": "awaiting_clarification",
+  "source": "whatsapp",
+  "has_audio": true,
+  "booking_status": "recommended",
+  "created_at": "2026-04-21T18:36:41.534544025+07:00",
+  "updated_at": "2026-04-21T18:36:41.534544025+07:00"
+}

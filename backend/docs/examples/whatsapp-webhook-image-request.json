@@ -1,0 +1,32 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "changes": [
+        {
+          "value": {
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Siti Aminah"
+                },
+                "wa_id": "6282233445566"
+              }
+            ],
+            "messages": [
+              {
+                "from": "6282233445566",
+                "id": "wamid.test.1",
+                "type": "image",
+                "image": {
+                  "id": "media123",
+                  "caption": "luka berdarah dan bengkak di tangan"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

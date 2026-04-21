@@ -10,19 +10,15 @@ import (
 var (
 	// Daftar client yang konek ke WS
 	clients   = make(map[*websocket.Conn]bool)
-	clientsMu sync.Mutex
+	clientsMu sync.RWMutex
 )
 
 // WSHandler mengelola koneksi realtime dashboard React
 func WSHandler(c *websocket.Conn) {
-	clientsMu.Lock()
-	clients[c] = true
-	clientsMu.Unlock()
+	registerClient(c)
 
 	defer func() {
-		clientsMu.Lock()
-		delete(clients, c)
-		clientsMu.Unlock()
+		unregisterClient(c)
 		c.Close()
 	}()
 
@@ -38,12 +34,29 @@ func WSHandler(c *websocket.Conn) {
 
 // BroadcastToClients mengirimkan data pasien terbaru ke semua dashboard React yang terbuka
 func BroadcastToClients(data interface{}) {
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
+	clientsMu.RLock()
+	snapshot := make([]*websocket.Conn, 0, len(clients))
 	for client := range clients {
+		snapshot = append(snapshot, client)
+	}
+	clientsMu.RUnlock()
+
+	for _, client := range snapshot {
 		if err := client.WriteJSON(data); err != nil {
 			client.Close()
-			delete(clients, client)
+			unregisterClient(client)
 		}
 	}
+}
+
+func registerClient(conn *websocket.Conn) {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	clients[conn] = true
+}
+
+func unregisterClient(conn *websocket.Conn) {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+	delete(clients, conn)
 }
